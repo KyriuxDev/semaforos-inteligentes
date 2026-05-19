@@ -43,24 +43,25 @@ logger = get_logger("main")
 
 AYUDA = """
 ╔══════════════════════════════════════════════════════════════════════╗
-║  TECNOLÓGICO NACIONAL DE MÉXICO — INSTITUTO TECNOLÓGICO DE OAXACA  ║
-║  Sistema de Semáforos Inteligentes — Subsistema de Procesamiento    ║
+║  TECNOLÓGICO NACIONAL DE MÉXICO — INSTITUTO TECNOLÓGICO DE OAXACA    ║
+║  Sistema de Semáforos Inteligentes — Subsistema de Procesamiento     ║
 ╠══════════════════════════════════════════════════════════════════════╣
-║  Uso:                                                               ║
-║    python main.py <ruta_video.mp4>                                  ║
-║    python main.py --sintetico                                       ║
-║    python main.py --noventana <ruta_video.mp4>                      ║
-║                                                                     ║
-║  Controles en ventana:                                              ║
-║    q — salir   |   p — pausar/reanudar   |   s — captura PNG        ║
-║                                                                     ║
-║  Parámetros YOLOv5 (protocolo, sec. 2.3.6):                        ║
-║    Modelo: yolov5s  |  Confianza: 0.45  |  IoU NMS: 0.45           ║
-║    t_base: 4 s/veh  |  t_mín: 12 s     |  t_máx: 60 s             ║
-║                                                                     ║
-║  Parámetros motor (protocolo, sec. 2.3.4–2.3.7):                   ║
-║    Amarillo: 3 s  |  Todo-rojo: 2 s  |  Bonus bus: 8 s             ║
-║    Ciclo mín: 45 s  |  Ciclo máx: 180 s                            ║
+║  Uso:                                                                ║
+║    python main.py <ruta_video.mp4>                                   ║
+║    python main.py --sintetico                                        ║
+║    python main.py --noventana <ruta_video.mp4>                       ║
+║    python main.py --simulacion                                       ║
+║                                                                      ║
+║  Controles en ventana:                                               ║
+║    q — salir   |   p — pausar/reanudar   |   s — captura PNG         ║
+║                                                                      ║
+║  Parámetros YOLOv5 (protocolo, sec. 2.3.6):                          ║
+║    Modelo: yolov5s  |  Confianza: 0.45  |  IoU NMS: 0.45             ║
+║    t_base: 4 s/veh  |  t_mín: 12 s     |  t_máx: 60 s                ║
+║                                                                      ║
+║  Parámetros motor (protocolo, sec. 2.3.4–2.3.7):                     ║
+║    Amarillo: 3 s  |  Todo-rojo: 2 s  |  Bonus bus: 8 s               ║ 
+║    Ciclo mín: 45 s  |  Ciclo máx: 180 s                              ║
 ╚══════════════════════════════════════════════════════════════════════╝
 """
 
@@ -98,9 +99,15 @@ def _bucle_con_motor(
 
     logger.info("Bucle detector+motor iniciado — q: salir | p: pausar | s: captura")
 
+    WINDOW_NAME = "ITO — Semáforos Inteligentes (Act. 9+10)"
+
     n_frame       = 0
     pausado       = False
     frame_anotado: Optional[np.ndarray] = None
+
+    # Crear la ventana UNA sola vez — evita multiplicación en Wayland/Qt
+    if cfg_detector.mostrar_ventana:
+        cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
 
     try:
         while True:
@@ -136,7 +143,7 @@ def _bucle_con_motor(
                     writer.write(frame_anotado)
 
             if cfg_detector.mostrar_ventana and frame_anotado is not None:
-                cv2.imshow("ITO — Semáforos Inteligentes (Act. 9+10)", frame_anotado)
+                cv2.imshow(WINDOW_NAME, frame_anotado)
                 tecla = cv2.waitKey(1) & 0xFF
                 if tecla == ord("q"):
                     break
@@ -168,6 +175,11 @@ def main(argv: list[str] | None = None) -> int:
 
     headless = "--noventana" in args
     args     = [a for a in args if a != "--noventana"]
+
+    if args[0] == "--simulacion":
+        from tests.simulacion import ejecutar_simulacion
+        ejecutar_simulacion()
+        return 0
 
     if args[0] == "--sintetico":
         logger.info("Generando video sintético de prueba...")
