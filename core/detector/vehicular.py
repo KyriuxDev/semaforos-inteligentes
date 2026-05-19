@@ -289,12 +289,12 @@ class DetectorVehicular:
         frame = frame_bgr.copy()
         h, w  = frame.shape[:2]
 
-        # Líneas virtuales de carril
-        for linea in self.cfg_d.lineas_conteo:
-            y_px = int(linea["y"] * h / self.cfg_d.tam_imagen)
-            cv2.line(frame, (0, y_px), (w, y_px), linea["color"], 1)
-            cv2.putText(frame, linea["nombre"], (4, y_px - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, linea["color"], 1)
+        # # Líneas virtuales de carril
+        # for linea in self.cfg_d.lineas_conteo:
+        #     y_px = int(linea["y"] * h / self.cfg_d.tam_imagen)
+        #     cv2.line(frame, (0, y_px), (w, y_px), linea["color"], 1)
+        #     cv2.putText(frame, linea["nombre"], (4, y_px - 5),
+        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.38, linea["color"], 1)
 
         # Bounding boxes
         for det in res.detecciones_raw:

@@ -8,7 +8,7 @@ Orquesta los tres subsistemas del Subsistema de Procesamiento (Capa 2):
 
 Uso
 ---
-  python main.py <video.mp4>           Detección sobre video existente.
+  python main.py <video.mp4>           Detección + decisión sobre video.
   python main.py --sintetico           Genera video sintético y lo procesa.
   python main.py --noventana <video>   Modo headless (sin GUI).
   python main.py --ayuda               Muestra esta pantalla.
@@ -19,10 +19,22 @@ ITO — Ingeniería en Sistemas Computacionales | Taller de Investigación II
 
 from __future__ import annotations
 
+import os
 import sys
+import warnings
 
-from config.settings import ConfigDetector, ConfigPipeline
+# Silenciar advertencias de Qt/OpenCV en entornos Wayland (Debian/Ubuntu)
+# No afectan el funcionamiento del sistema; son ruido del entorno gráfico.
+os.environ.setdefault("QT_LOGGING_RULES", "*.debug=false;qt.qpa.*=false")
+os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
+
+# Silenciar el PRO TIP de Ultralytics sobre yolov5su
+warnings.filterwarnings("ignore", category=UserWarning, module="ultralytics")
+
+from config.settings import ConfigDetector, ConfigMotor, ConfigPipeline
+from core.decision.motor import MotorDecision
 from core.detector.vehicular import DetectorVehicular
+from models.schemas import ResultadoDeteccion
 from utils.logger import configurar_logging, get_logger
 from utils.video import generar_video_sintetico
 
@@ -36,13 +48,8 @@ AYUDA = """
 ╠══════════════════════════════════════════════════════════════════════╣
 ║  Uso:                                                               ║
 ║    python main.py <ruta_video.mp4>                                  ║
-║        Detección YOLOv5 sobre un video existente.                   ║
-║                                                                     ║
 ║    python main.py --sintetico                                       ║
-║        Genera video sintético de prueba y ejecuta detección.        ║
-║                                                                     ║
 ║    python main.py --noventana <ruta_video.mp4>                      ║
-║        Modo headless: solo log en consola, sin GUI.                 ║
 ║                                                                     ║
 ║  Controles en ventana:                                              ║
 ║    q — salir   |   p — pausar/reanudar   |   s — captura PNG        ║
@@ -50,8 +57,106 @@ AYUDA = """
 ║  Parámetros YOLOv5 (protocolo, sec. 2.3.6):                        ║
 ║    Modelo: yolov5s  |  Confianza: 0.45  |  IoU NMS: 0.45           ║
 ║    t_base: 4 s/veh  |  t_mín: 12 s     |  t_máx: 60 s             ║
+║                                                                     ║
+║  Parámetros motor (protocolo, sec. 2.3.4–2.3.7):                   ║
+║    Amarillo: 3 s  |  Todo-rojo: 2 s  |  Bonus bus: 8 s             ║
+║    Ciclo mín: 45 s  |  Ciclo máx: 180 s                            ║
 ╚══════════════════════════════════════════════════════════════════════╝
 """
+
+
+def _bucle_con_motor(
+    detector: DetectorVehicular,
+    motor: MotorDecision,
+    cfg_pipeline: ConfigPipeline,
+    cfg_detector: ConfigDetector,
+) -> None:
+    """
+    Bucle principal que encadena detector → motor en cada frame.
+
+    DetectorVehicular.ejecutar() es suficiente para visualización standalone.
+    Este bucle alternativo permite que la DecisionSemaforica del motor sea
+    procesada en cada frame (p. ej. para logging extendido o controlador real).
+    """
+    import cv2
+    from typing import Optional
+    import numpy as np
+
+    captura = cv2.VideoCapture(cfg_pipeline.rtsp_url)
+    if not captura.isOpened():
+        raise IOError(f"No se pudo abrir: {cfg_pipeline.rtsp_url}")
+
+    fps_src = captura.get(cv2.CAP_PROP_FPS) or 25
+    w_src   = int(captura.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h_src   = int(captura.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    writer: Optional[cv2.VideoWriter] = None
+    if cfg_detector.guardar_video:
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(cfg_detector.ruta_video_salida, fourcc, fps_src, (w_src, h_src))
+        logger.info(f"Grabando → {cfg_detector.ruta_video_salida}")
+
+    logger.info("Bucle detector+motor iniciado — q: salir | p: pausar | s: captura")
+
+    n_frame       = 0
+    pausado       = False
+    frame_anotado: Optional[np.ndarray] = None
+
+    try:
+        while True:
+            if not pausado:
+                ret, frame_bgr = captura.read()
+                if not ret:
+                    logger.info("Fin de video.")
+                    break
+
+                n_frame += 1
+
+                # ── Actividad 9: inferencia del detector ───────────────────
+                resultado: ResultadoDeteccion = detector.inferir(frame_bgr, n_frame)
+                detector._actualizar_metricas(resultado)
+
+                # ── Actividad 10: motor de decisión ────────────────────────
+                decision = motor.decidir(resultado)
+
+                # Log consolidado cada 25 frames (≈ 1 línea/s a 25 fps)
+                if n_frame % 25 == 0:
+                    logger.info(
+                        f"[{n_frame:05d}] "
+                        f"veh={resultado.total_vehiculos} "
+                        f"({resultado.nivel_congestion}) | "
+                        f"ciclo={decision.ciclo_total_s:.0f}s "
+                        f"prior={decision.fase_prioritaria} "
+                        f"[{decision.motivo_prioridad}] | "
+                        f"lat={resultado.latencia_ms:.0f}ms"
+                    )
+
+                frame_anotado = detector.anotar_frame(frame_bgr, resultado)
+                if writer:
+                    writer.write(frame_anotado)
+
+            if cfg_detector.mostrar_ventana and frame_anotado is not None:
+                cv2.imshow("ITO — Semáforos Inteligentes (Act. 9+10)", frame_anotado)
+                tecla = cv2.waitKey(1) & 0xFF
+                if tecla == ord("q"):
+                    break
+                elif tecla == ord("p"):
+                    pausado = not pausado
+                    logger.info("PAUSADO" if pausado else "REANUDADO")
+                elif tecla == ord("s") and not pausado:
+                    nombre = f"data/captura_{n_frame:05d}.png"
+                    cv2.imwrite(nombre, frame_anotado)
+                    logger.info(f"Captura: {nombre}")
+
+    except KeyboardInterrupt:
+        logger.info("Interrupción por teclado.")
+    finally:
+        captura.release()
+        if writer:
+            writer.release()
+        cv2.destroyAllWindows()
+        detector._log_metricas()
+        print(motor.resumen_sesion())
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -80,12 +185,14 @@ def main(argv: list[str] | None = None) -> int:
         guardar_video=True,
         ruta_video_salida="data/deteccion_vehicular.mp4",
     )
+    cfg_motor = ConfigMotor()
 
     detector = DetectorVehicular(cfg_pipeline, cfg_detector)
+    motor    = MotorDecision(cfg_motor)
 
     try:
         detector.iniciar()
-        detector.ejecutar()
+        _bucle_con_motor(detector, motor, cfg_pipeline, cfg_detector)
     except ImportError as exc:
         logger.error(str(exc))
         return 1

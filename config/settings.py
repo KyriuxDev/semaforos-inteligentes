@@ -4,14 +4,20 @@ config/settings.py — Configuraciones y constantes del sistema.
 Centraliza todos los parámetros operativos del proyecto para facilitar
 el ajuste sin necesidad de modificar los módulos de lógica.
 
-Corresponde al protocolo de investigación, sección 2.3.6:
-"Parámetros operativos" y sección 2.8.3.2 (Actividad 9).
+Secciones:
+  A — Clases COCO vehiculares
+  B — Umbrales de congestión
+  C — Temporización semafórica adaptativa
+  D — ConfigPipeline   (Actividad 8)
+  E — ConfigDetector   (Actividad 9)
+  F — ConfigMotor      (Actividad 10)
 
 Referencias:
     - Blogs ETSII URJC (2025). Sistema de semáforos inteligente.
     - San Miguel, S. (2024). Revista ConCiencia Joven, 2, 32-38.
     - Ultralytics (2024). Comprehensive Guide to Ultralytics YOLOv5.
     - ScienceDirect (2024). YOLOv5 — an overview.
+    - Protocolo de Investigación, secciones 2.3.4–2.3.7.
 """
 
 from __future__ import annotations
@@ -188,14 +194,107 @@ class ConfigDetector:
     guardar_video:     bool  = True
     ruta_video_salida: str   = "data/deteccion_vehicular.mp4"
 
-    # ── Líneas virtuales de conteo por carril (frame 640×640) ───────────────
-    lineas_conteo: List[dict] = field(default_factory=lambda: [
-        {"nombre": "Carril norte",  "y": 160, "color": (0,   255, 255)},
-        {"nombre": "Carril centro", "y": 320, "color": (255, 165, 0)},
-        {"nombre": "Carril sur",    "y": 480, "color": (0,   165, 255)},
-    ])
+    # # ── Líneas virtuales de conteo por carril (frame 640×640) ───────────────
+    # lineas_conteo: List[dict] = field(default_factory=lambda: [
+    #     {"nombre": "Carril norte",  "y": 160, "color": (0,   255, 255)},
+    #     {"nombre": "Carril centro", "y": 320, "color": (255, 165, 0)},
+    #     {"nombre": "Carril sur",    "y": 480, "color": (0,   165, 255)},
+    # ])
 
     # ── Temporización semafórica adaptativa ─────────────────────────────────
     tiempo_base_por_vehiculo_s: float = TIEMPO_BASE_POR_VEHICULO_S
     tiempo_verde_minimo_s:      float = TIEMPO_VERDE_MINIMO_S
     tiempo_verde_maximo_s:      float = TIEMPO_VERDE_MAXIMO_S
+
+
+# ===========================================================================
+# SECCIÓN F — ConfigMotor
+#
+# Parámetros del motor de decisión semafórica (Actividad 10).
+# Protocolo, secciones 2.3.4–2.3.7 — Coordinación dinámica, ciclos
+# adaptativos, parámetros operativos y mecanismos de priorización.
+# ===========================================================================
+
+@dataclass
+class ConfigMotor:
+    """
+    Parámetros del motor de decisión semafórica (Actividad 10).
+
+    Atributos — Tiempos de transición
+    ----------------------------------
+    tiempo_amarillo_s : float
+        Duración de la fase amarilla (advertencia de cambio). Valor: 3 s.
+        Calculado para velocidades de aproximación de 40–50 km/h típicas
+        en intersecciones urbanas de Oaxaca. Protocolo, sección 2.2.4.
+    tiempo_todo_rojo_s : float
+        Duración del intervalo todo-rojo entre fases (despeje de intersección).
+        Valor: 2 s. Garantiza que no haya vehículos en la zona de conflicto
+        al iniciar la siguiente fase. Protocolo, sección 2.2.4.
+
+    Atributos — Límites de ciclo
+    ----------------------------
+    ciclo_min_s : float
+        Duración mínima del ciclo completo (todas las fases). Valor: 45 s.
+        Por debajo de este umbral las pérdidas por transición superan la
+        ganancia adaptativa. Protocolo, sección 2.2.4 (método de Webster).
+    ciclo_max_s : float
+        Duración máxima del ciclo. Valor: 180 s.
+        Ciclos más largos generan tiempos de espera inaceptables (> 90 s
+        por fase) que incrementan frustración y emisiones contaminantes.
+        Protocolo, sección 2.2.5 — Tiempos de espera.
+
+    Atributos — Priorización de autobús
+    -------------------------------------
+    bonus_autobus_s : float
+        Segundos adicionales de verde cuando se detecta ≥ 1 autobús de
+        transporte público en un carril. Valor: 8 s.
+        Implementa la priorización de transporte colectivo descrita en
+        protocolo sección 2.3.7. ILUNION (2024) reporta que esta estrategia
+        redujo el tiempo de viaje en la línea E de Seattle en ~6 minutos y
+        aumentó pasajeros un 35 %.
+    max_autobuses_bonus : int
+        Número máximo de autobuses que acumulan bonus (cap anti-monopolio).
+        Valor: 2. Evita que un carril acapare todo el ciclo.
+
+    Atributos — Robustez y fallback
+    --------------------------------
+    max_frames_sin_deteccion : int
+        Número máximo de frames consecutivos sin ResultadoDeteccion antes
+        de activar el modo fallback de tiempo fijo. Valor: 10 frames.
+        A 25 fps equivale a 0.4 s sin datos del detector.
+        Protocolo, sección 2.5.2 — Detección en tiempo real.
+    tiempos_fallback_s : dict[str, float]
+        Tiempos de verde fijos aplicados en modo fallback.
+        Corresponden a los tiempos promedio medidos en los aforos
+        vehiculares de la Actividad 3 (intersecciones OAX-01/02/03).
+        Por defecto: 30 s para todos los carriles (ciclo simétrico).
+
+    Atributos — Historial
+    ----------------------
+    tam_historial : int
+        Número de decisiones recientes almacenadas en memoria para
+        análisis estadístico en la Actividad 11 (Simulación).
+        Valor: 100 decisiones.
+    """
+    # ── Transiciones ────────────────────────────────────────────────────────
+    tiempo_amarillo_s:   float = 3.0
+    tiempo_todo_rojo_s:  float = 2.0
+
+    # ── Límites de ciclo ─────────────────────────────────────────────────────
+    ciclo_min_s:         float = 45.0
+    ciclo_max_s:         float = 180.0
+
+    # ── Priorización autobús ─────────────────────────────────────────────────
+    bonus_autobus_s:     float = 8.0
+    max_autobuses_bonus: int   = 2
+
+    # ── Robustez / fallback ──────────────────────────────────────────────────
+    max_frames_sin_deteccion: int = 10
+    tiempos_fallback_s: Dict[str, float] = field(default_factory=lambda: {
+        "norte":  30.0,
+        "centro": 30.0,
+        "sur":    30.0,
+    })
+
+    # ── Historial ────────────────────────────────────────────────────────────
+    tam_historial: int = 100
