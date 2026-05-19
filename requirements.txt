@@ -1,0 +1,25 @@
+# requirements.txt — Dependencias del sistema de semáforos inteligentes
+# ITO — Taller de Investigación II | Actividades 8–10
+#
+# Instalación:
+#   pip install -r requirements.txt
+#
+# PyTorch CPU (si no hay GPU NVIDIA):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Visión por computadora
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Detección vehicular YOLOv5
+ultralytics>=8.0.0
+
+# Deep learning (ver nota de instalación arriba para CPU)
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Validación de calidad de frames (Etapa 7 del pipeline)
+scikit-image>=0.21.0
+
+# Utilerías científicas
+scipy>=1.10.0
