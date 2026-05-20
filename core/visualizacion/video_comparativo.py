@@ -132,7 +132,7 @@ class Vehiculo:
 
 
 # ===========================================================================
-# Enfoque animado — car-following
+# Enfoque animado — car-following por carril
 # ===========================================================================
 
 class Enfoque:
@@ -165,14 +165,40 @@ class Enfoque:
         elif self.direction=="este":  self.vehiculos.sort(key=lambda v: v.x)
         elif self.direction=="oeste": self.vehiculos.sort(key=lambda v:-v.x)
 
+    def _carril_veh(self, v: Vehiculo) -> int:
+        """Determina en qué carril está el vehículo según su posición."""
+        if self.direction in ("norte", "sur"):
+            return max(0, min(DIR_LANES-1, int((v.x - self._x0) / LANE_W)))
+        else:
+            return max(0, min(DIR_LANES-1, int((v.y - self._y0) / LANE_W)))
+
     def _stop_ef(self, idx:int, verde:bool) -> float:
+        """Stop efectivo: solo sigue al vehículo más cercano adelante en el MISMO carril."""
         base=(1e6 if (self._dy>0 or self._dx>0) else -1e6) if verde else self._stop
-        if idx==0: return base
-        prev=self.vehiculos[idx-1]
-        if self.direction=="norte":  return min(base, prev.y-prev.vh/2-self.GAP)
-        elif self.direction=="sur":  return max(base, prev.y+prev.vh/2+self.GAP)
-        elif self.direction=="este": return max(base, prev.x+prev.vw/2+self.GAP)
-        elif self.direction=="oeste":return min(base, prev.x-prev.vw/2-self.GAP)
+        v = self.vehiculos[idx]
+        mi_carril = self._carril_veh(v)
+        adelante = None
+        for otro in self.vehiculos:
+            if otro is v or self._carril_veh(otro) != mi_carril:
+                continue
+            if self.direction == "norte":
+                if otro.y > v.y and (adelante is None or otro.y < adelante.y):
+                    adelante = otro
+            elif self.direction == "sur":
+                if otro.y < v.y and (adelante is None or otro.y > adelante.y):
+                    adelante = otro
+            elif self.direction == "este":
+                if otro.x < v.x and (adelante is None or otro.x > adelante.x):
+                    adelante = otro
+            elif self.direction == "oeste":
+                if otro.x > v.x and (adelante is None or otro.x < adelante.x):
+                    adelante = otro
+        if adelante is None:
+            return base
+        if self.direction == "norte":   return min(base, adelante.y - adelante.vh/2 - self.GAP)
+        elif self.direction == "sur":   return max(base, adelante.y + adelante.vh/2 + self.GAP)
+        elif self.direction == "este":  return max(base, adelante.x + adelante.vw/2 + self.GAP)
+        elif self.direction == "oeste": return min(base, adelante.x - adelante.vw/2 - self.GAP)
         return base
 
     def actualizar(self, dt:float, n_obj:int, verde:bool) -> None:
