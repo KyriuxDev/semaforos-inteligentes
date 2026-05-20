@@ -51,6 +51,7 @@ CLASES_VEHICULO: Dict[int, str] = {
     5: "autobús",
     7: "camión",
     1: "bicicleta",
+    0: "peatón",
 }
 
 # Colores BGR para visualización en OpenCV
@@ -60,6 +61,7 @@ COLORES_CLASE: Dict[int, tuple] = {
     5: (0,   80,  255),   # autobús     — naranja oscuro
     7: (50,  50,  200),   # camión      — rojo oscuro
     1: (200, 200, 0),     # bicicleta   — cian
+    0: (180, 0,   255),   # ← peatón — morado
 }
 
 
