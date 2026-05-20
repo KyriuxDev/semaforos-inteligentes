@@ -51,6 +51,8 @@ AYUDA = """
 ║    python main.py --sintetico                                        ║
 ║    python main.py --noventana <ruta_video.mp4>                       ║
 ║    python main.py --simulacion                                       ║
+║    python main.py --simulacion                                       ║
+║    python main.py --comparativo                                      ║
 ║                                                                      ║
 ║  Controles en ventana:                                               ║
 ║    q — salir   |   p — pausar/reanudar   |   s — captura PNG         ║
@@ -181,6 +183,21 @@ def main(argv: list[str] | None = None) -> int:
         ejecutar_simulacion()
         return 0
 
+    if args[0] == "--comparativo":
+        from core.visualizacion.video_comparativo import generar_comparativo
+        generar_comparativo()
+        return 0
+
+
+    if args[0] == "--simulacion-visual":
+        ruta_video = args[1] if len(args) > 1 else "data/test_trafico.mp4"
+        from core.visualizacion.simulador import SimuladorVisual
+        cfg_pipeline = ConfigPipeline(rtsp_url=ruta_video)
+        cfg_detector = ConfigDetector(modelo_yolo="yolov5s", mostrar_ventana=False)
+        cfg_motor    = ConfigMotor()
+        SimuladorVisual(cfg_pipeline, cfg_detector, cfg_motor).ejecutar()
+        return 0
+    
     if args[0] == "--sintetico":
         logger.info("Generando video sintético de prueba...")
         ruta_video = generar_video_sintetico(

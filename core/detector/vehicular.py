@@ -161,17 +161,10 @@ class DetectorVehicular:
     # Lógica de clasificación
     # ------------------------------------------------------------------
 
-    def _asignar_carril(self, cy: int, alto: int) -> str:
-        """
-        Asigna un vehículo al carril según cy (coordenada Y del centro).
-        Frame dividido en tres zonas iguales: norte / centro / sur.
-        Protocolo, sección 2.3.6.
-        """
-        tercio = alto // 3
-        if cy < tercio:
-            return "norte"
-        if cy < 2 * tercio:
-            return "centro"
+    def _asignar_carril(self, cx: int, ancho: int) -> str:
+        tercio = ancho // 3
+        if cx < tercio:     return "norte"
+        if cx < 2*tercio:   return "centro"
         return "sur"
 
     def _clasificar_congestion(self, n: int) -> str:
@@ -248,7 +241,7 @@ class DetectorVehicular:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 cx, cy     = (x1 + x2) // 2, (y1 + y2) // 2
                 nombre_cls = CLASES_VEHICULO[cls_id]
-                carril     = self._asignar_carril(cy, h)
+                carril = self._asignar_carril(cx, w)
 
                 detecciones.append({
                     "clase_id":  cls_id,
